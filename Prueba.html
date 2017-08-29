@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html>
+<head><meta charset="UTF-8" /></head>
+<body>
+  <h3>Subir imagen</h3>
+    <div id="formulario">
+      <form action="http://s3-ap-northeast-1.amazonaws.com/itzdata-manugr" method="post" enctype="multipart/form-data">
+        <fieldset>
+          <input type="hidden" name="Content-Type" value="image/png">
+          <input type="hidden" name="acl" value="public-read" />
+          <i>Titulo:</i><input type="text" name="x-amz-meta-Titulo" />
+          <br />
+          <i>Nombre:</i><input type="text" name="key" value="image.jpg" />
+          <br/>
+          <input name="file" type="file" />
+          <br />
+          <input name="submit" value="Upload to S3" type="submit" />
+      </fieldset></form>
+    </div>
+</body></html>

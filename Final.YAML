@@ -1,0 +1,438 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: >-
+  VPC: 2 subredes, 2 EC2, RouteTable, NetworkAccesList, SecurityGroup, ElasticLoadBalancer
+################################################################################
+#                                  Mappings                                    #
+################################################################################
+#Mapings es usado para seleccionar un AMI de amazon sin importar la region
+Mappings:
+  RegionMap:
+    us-east-1:
+      "32": "ami-6411e20d"
+      "64": "ami-7a11e213"
+    us-east-2:
+      "64": "ami-3883a55d"
+    us-west-1:
+      "32": "ami-c9c7978c"
+      "64": "ami-cfc7978a"
+    eu-west-1:
+      "32": "ami-37c2f643"
+      "64": "ami-31c2f645"
+    ap-southeast-1:
+      "32": "ami-66f28c34"
+      "64": "ami-60f28c32"
+    ap-northeast-1:
+      "32": "ami-9c03a89d"
+      "64": "ami-a003a8a1"
+################################################################################
+#                                 Parametros                                   #
+################################################################################
+#Aqui van todos los parametros para personalizar la creacion del stack
+Parameters:
+  IPVPC:
+    Type: String
+    Description: Ip de la VPC
+  IPPublic1:
+    Type: String
+    Description: IP para la subred publica 1
+  IPPublic2:
+    Type: String
+    Description: IP para la subred publica 2
+  IPPrivate1:
+    Type: String
+    Description: IP para la subred privada 1
+  IPPrivate2:
+    Type: String
+    Description: IP para la subred privada 2
+  KeyName:
+    Type: String
+    Description: Nombre del KeyName Pair para entrar a las EC2's
+################################################################################
+#                                  Recursos                                    #
+################################################################################
+Resources:
+  #VPC
+  ManuelVPC:
+    Type: 'AWS::EC2::VPC'
+    Properties:
+      CidrBlock: !Ref IPVPC
+      Tags:
+      - Key: Name
+        Value: itzdata-manuel-VPC
+  ##############################################################################
+  #                             Sub-Redes Publicas                             #
+  ##############################################################################
+  #Subred publica en EAST 2A
+  PublicSubnet1:
+    Type: 'AWS::EC2::Subnet'
+    Properties:
+      VpcId: !Ref ManuelVPC
+      CidrBlock: !Ref IPPublic1
+      MapPublicIpOnLaunch: True
+      AvailabilityZone: us-east-2a
+      Tags:
+      - Key: Name
+        Value: itzdata-manuel-public1
+  #Subred publica en EAST 2B
+  PublicSubnet2:
+    Type: 'AWS::EC2::Subnet'
+    Properties:
+      VpcId: !Ref ManuelVPC
+      CidrBlock: !Ref IPPublic2
+      MapPublicIpOnLaunch: True
+      AvailabilityZone: us-east-2b
+      Tags:
+      - Key: Name
+        Value: itzdata-manuel-public2
+
+  #Tabla de enrutamiento publica
+  RouteTable1:
+    Type: 'AWS::EC2::RouteTable'
+    Properties:
+      VpcId: !Ref ManuelVPC
+      Tags:
+        - Key: Name
+          Value: itzdata-manuel-PublicRT
+  #InternetGateWay
+  IGW:
+    Type: 'AWS::EC2::InternetGateway'
+    Properties:
+      Tags:
+      - Key: Name
+        Value: IGW
+  #Relacion entre el IGW y la VPC
+  IGWattachment:
+    Type: 'AWS::EC2::VPCGatewayAttachment'
+    Properties:
+      InternetGatewayId: !Ref IGW
+      VpcId: !Ref ManuelVPC
+  #Ruta de la tabla al IGW
+  Route1:
+    Type: 'AWS::EC2::Route'
+    Properties:
+      RouteTableId: !Ref RouteTable1
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref IGW
+  #Relacion dela subred publica 1 y la tabla de ruteo
+  SubnetAssociation1:
+      Type: AWS::EC2::SubnetRouteTableAssociation
+      Properties:
+        RouteTableId: !Ref RouteTable1
+        SubnetId: !Ref PublicSubnet1
+  #Relacion dela subred prublica 2 y la tabla de ruteo
+  SubnetAssociation2:
+      Type: AWS::EC2::SubnetRouteTableAssociation
+      Properties:
+        RouteTableId: !Ref RouteTable1
+        SubnetId: !Ref PublicSubnet2
+  ##############################################################################
+  #                              Area de las EC2                               #
+  ##############################################################################
+  #Maquina con IP publica 1
+  EC2Public1:
+    Type: 'AWS::EC2::Instance'
+    Properties:
+      SubnetId: !Ref PublicSubnet1
+      InstanceType: t2.micro
+      KeyName: !Ref KeyName
+      ImageId: !FindInMap [RegionMap, !Ref "AWS::Region", 64]
+      SecurityGroupIds:
+        - !Ref SecurityGroup
+      Tags:
+        - Key: Name
+          Value: itzdata-manuel-public1
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/bash
+          sudo yum update -y
+          sudo yum install -y httpd24 php70 php70-mysqlnd mysql
+          echo "<!DOCTYPE html>" > /var/www/html/index.html
+          echo "<html>" >> /var/www/html/index.html
+          echo "<head><meta charset=\"UTF-8\" /></head>" >> /var/www/html/index.html
+          echo "<body>" >> /var/www/html/index.html
+          echo "  <h3>Subir imagen</h3>" >> /var/www/html/index.html
+          echo "    <div id=\"formulario\">" >> /var/www/html/index.html
+          echo "      <form action=\"	https://s3.us-east-2.amazonaws.com/itzdata-manu\" method=\"post\" enctype=\"multipart/form-data\">" >> /var/www/html/index.html
+          echo "        <fieldset>" >> /var/www/html/index.html
+          echo "          <input type="hidden" name="Content-Type" value="image/png">" >> /var/www/html/index.html
+          echo "          <input type=\"hidden\" name=\"acl\" value=\"public-read\" />" >> /var/www/html/index.html
+          echo "          <br />" >> /var/www/html/index.html
+          echo "          <i>Titulo: </i><input type=\"text\" name=\"x-amz-meta-titulo\" />" >> /var/www/html/index.html
+          echo "          <br />" >> /var/www/html/index.html
+          echo "          <i>Nombre: </i><input type=\"text\" name=\"key\" value=\"image.jpg\" />" >> /var/www/html/index.html
+          echo "          <br />" >> /var/www/html/index.html
+          echo "          <i>Foto: </i><input name=\"file\" type=\"file\" />" >> /var/www/html/index.html
+          echo "          <br /><br />" >> /var/www/html/index.html
+          echo "          <input name=\"submit\" value=\"Upload to S3\" type=\"submit\" />" >> /var/www/html/index.html
+          echo "      </fieldset></form>" >> /var/www/html/index.html
+          echo "    </div>" >> /var/www/html/index.html
+          echo "</body></html>" >> /var/www/html/index.html
+          service httpd start
+  #Maquina con IP publica 2
+  EC2Public2:
+    Type: 'AWS::EC2::Instance'
+    Properties:
+      SubnetId: !Ref PublicSubnet2
+      InstanceType: t2.micro
+      KeyName: !Ref KeyName
+      ImageId: !FindInMap [RegionMap, !Ref "AWS::Region", 64]
+      SecurityGroupIds:
+        - !Ref SecurityGroup
+      Tags:
+        - Key: Name
+          Value: itzdata-manuel-public1
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/bash
+          sudo yum update -y
+          sudo yum install -y httpd24 php70 php70-mysqlnd mysql
+          echo "<!DOCTYPE html>" > /var/www/html/index.html
+          echo "<html>" >> /var/www/html/index.html
+          echo "<head><meta charset=\"UTF-8\" /></head>" >> /var/www/html/index.html
+          echo "<body>" >> /var/www/html/index.html
+          echo "  <h3>Subir imagen</h3>" >> /var/www/html/index.html
+          echo "    <div id=\"formulario\">" >> /var/www/html/index.html
+          echo "      <form action=\"	https://s3.us-east-2.amazonaws.com/itzdata-manu\" method=\"post\" enctype=\"multipart/form-data\">" >> /var/www/html/index.html
+          echo "        <fieldset>" >> /var/www/html/index.html
+          echo "          <input type="hidden" name="Content-Type" value="image/png">" >> /var/www/html/index.html
+          echo "          <input type=\"hidden\" name=\"acl\" value=\"public-read\" />" >> /var/www/html/index.html
+          echo "          <br />" >> /var/www/html/index.html
+          echo "          <i>Titulo: </i><input type=\"text\" name=\"x-amz-meta-titulo\" />" >> /var/www/html/index.html
+          echo "          <br />" >> /var/www/html/index.html
+          echo "          <i>Nombre: </i><input type=\"text\" name=\"key\" value=\"image.jpg\" />" >> /var/www/html/index.html
+          echo "          <br />" >> /var/www/html/index.html
+          echo "          <i>Foto: </i><input name=\"file\" type=\"file\" />" >> /var/www/html/index.html
+          echo "          <br /><br />" >> /var/www/html/index.html
+          echo "          <input name=\"submit\" value=\"Upload to S3\" type=\"submit\" />" >> /var/www/html/index.html
+          echo "      </fieldset></form>" >> /var/www/html/index.html
+          echo "    </div>" >> /var/www/html/index.html
+          echo "</body></html>" >> /var/www/html/index.html
+          service httpd start
+  ##############################################################################
+  #                                  Seguridad                                 #
+  ##############################################################################
+  #Network Access List
+  NetworkAcl:
+    Type: AWS::EC2::NetworkAcl
+    Properties:
+      VpcId: !Ref ManuelVPC
+      Tags:
+      - Key: Name
+        Value: itzdata-manuel-NACL
+  NetworkAclEntryOut:
+    Type: AWS::EC2::NetworkAclEntry
+    Properties:
+      NetworkAclId: !Ref NetworkAcl
+      RuleNumber: '10'
+      Protocol: -1
+      RuleAction: allow
+      Egress: 'true'
+      CidrBlock: 0.0.0.0/0
+  NetworkAclEntryIn:
+    Type: AWS::EC2::NetworkAclEntry
+    Properties:
+      NetworkAclId: !Ref NetworkAcl
+      RuleNumber: '10'
+      Protocol: "-1"
+      RuleAction: allow
+      Egress: 'false'
+      CidrBlock: 0.0.0.0/0
+  #Relacion de la subred y la NetworkAcl
+  ACLpublic1:
+    Type: AWS::EC2::SubnetNetworkAclAssociation
+    Properties:
+      SubnetId: !Ref PublicSubnet1
+      NetworkAclId: !Ref NetworkAcl
+  #Grupo de seguridad y las reglas de entrada y salida
+  SecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Allow http and ssh to client host
+      VpcId: !Ref ManuelVPC
+      SecurityGroupIngress:
+      - IpProtocol: tcp
+        FromPort: '80'
+        ToPort: '80'
+        CidrIp: 0.0.0.0/0
+      - IpProtocol: tcp
+        FromPort: '22'
+        ToPort: '22'
+        CidrIp: 0.0.0.0/0
+      - IpProtocol: tcp
+        FromPort: '3306'
+        ToPort: '3306'
+        CidrIp: 0.0.0.0/0
+      - IpProtocol: ICMP
+        FromPort: '8'
+        ToPort: "-1"
+        CidrIp: 0.0.0.0/0
+      - IpProtocol: tcp
+        FromPort: '443'
+        ToPort: '443'
+        CidrIp: 0.0.0.0/0
+      SecurityGroupEgress:
+      - IpProtocol: tcp
+        FromPort: '80'
+        ToPort: '80'
+        CidrIp: 0.0.0.0/0
+      - IpProtocol: tcp
+        FromPort: '22'
+        ToPort: '22'
+        CidrIp: 0.0.0.0/0
+      - IpProtocol: tcp
+        FromPort: '3306'
+        ToPort: '3306'
+        CidrIp: 0.0.0.0/0
+      - IpProtocol: ICMP
+        FromPort: '8'
+        ToPort: "-1"
+        CidrIp: 0.0.0.0/0
+      - IpProtocol: tcp
+        FromPort: '443'
+        ToPort: '443'
+        CidrIp: 0.0.0.0/0
+      Tags:
+      - Key: Name
+        Value: itzdata-manuel-securityGroup
+  ##############################################################################
+  #                           Elastic Load Balancer                            #
+  ##############################################################################
+  ELBpublico:
+    Type: 'AWS::ElasticLoadBalancing::LoadBalancer'
+    Properties:
+      CrossZone: True
+      Instances:
+        - !Ref EC2Public1
+        - !Ref EC2Public2
+      LoadBalancerName: itzdata-manuel-elb
+      Listeners:
+        - LoadBalancerPort: '80'
+          InstancePort: '80'
+          Protocol: HTTP
+      SecurityGroups:
+        - !Ref SecurityGroup
+      Subnets:
+        - !Ref PublicSubnet1
+        - !Ref PublicSubnet2
+      Tags:
+        - Key: Name
+          Value: itzdata-manuel-ELB
+  ##############################################################################
+  #                                 Lo del RDS                                 #
+  ##############################################################################
+  ##############################################################################
+  #                             Sub-Redes Privadas                             #
+  ##############################################################################
+  #Subred privada en EAST 2A
+  PrivateSubnet1:
+    Type: 'AWS::EC2::Subnet'
+    Properties:
+      VpcId: !Ref ManuelVPC
+      CidrBlock: !Ref IPPrivate1
+      AvailabilityZone: us-east-2a
+      Tags:
+      - Key: Name
+        Value: itzdata-manuel-private1
+  #Subred privada en EAST 2B
+  PrivateSubnet2:
+    Type: 'AWS::EC2::Subnet'
+    Properties:
+      VpcId: !Ref ManuelVPC
+      CidrBlock: !Ref IPPrivate2
+      AvailabilityZone: us-east-2b
+      Tags:
+      - Key: Name
+        Value: itzdata-manuel-private2
+  ##############################################################################
+  #                       Tabla de ruteo y asociasiones                        #
+  ##############################################################################
+  #Tabla de enrutamiento privada
+  RouteTable:
+    Type: 'AWS::EC2::RouteTable'
+    Properties:
+      VpcId: !Ref ManuelVPC
+      Tags:
+        - Key: Name
+          Value: itzdata-manuel-PrivateRT
+  #Relacion dela subred privada 1 y la tabla de ruteo
+  SubnetAssociation3:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref RouteTable
+      SubnetId: !Ref PrivateSubnet1
+  #Relacion dela subred privada 2 y la tabla de ruteo
+  SubnetAssociation4:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref RouteTable
+      SubnetId: !Ref PrivateSubnet2
+  ##############################################################################
+  #                               Cosas de la BD                               #
+  ##############################################################################
+  #VPC Endpoint
+  S3Endpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      PolicyDocument: {
+        "Version":"2012-10-17",
+        "Statement":[{
+          "Effect":"Allow",
+          "Principal": "*",
+          "Action":["s3:GetObject"],
+          "Resource":["arn:aws:s3:::itzdata-manu/*"]
+        }]
+      }
+      RouteTableIds:
+        - !Ref RouteTable1
+        - !Ref RouteTable
+      ServiceName: !Join ['', [com.amazonaws., !Ref 'AWS::Region', .s3]]
+      VpcId: !Ref ManuelVPC
+  #Agrupacion de subnets para la base de datos
+  DBSubnet:
+    Type: AWS::RDS::DBSubnetGroup
+    Properties:
+      DBSubnetGroupDescription: Grupo de seguridad para la BD
+      SubnetIds:
+        - !Ref PrivateSubnet1
+        - !Ref PrivateSubnet2
+      Tags:
+        - Key: Name
+          Value: itzdata-manuel-DBSubnet
+  #La Base de datos como tal
+  DBMySQL:
+    Type: AWS::RDS::DBInstance
+    Properties:
+      DBName: manuDB
+      AllocatedStorage: "5"
+      DBInstanceClass: db.t2.micro
+      Engine: MySQL
+      MasterUsername: Manugr21
+      MasterUserPassword: "12345678"
+      DBSubnetGroupName: !Ref DBSubnet
+      VPCSecurityGroups:
+        - !Ref SecurityGroup
+      Tags:
+        - Key: Name
+          Value: itzdata-manuel-DB
+
+################################################################################
+#                               Area de Outputs                                #
+################################################################################
+Outputs:
+  #Export de toda la vpc porque yolo
+  manuelPS1:
+    Description: Manuel's VPC
+    Value: !Ref ManuelVPC
+    Export:
+      Name: manuelVPC
+  #Export de toda la vpc porque yolo
+  manuelSeGr:
+    Description: Security group con lo necesario
+    Value: !Ref SecurityGroup
+    Export:
+      Name: manuelSG
+  manuelRDS:
+    Description: Endpoint de mi RDS
+    Value: !GetAtt DBMySQL.Endpoint.Address
+    Export:
+        Name: manuelDB

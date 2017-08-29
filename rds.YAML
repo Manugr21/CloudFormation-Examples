@@ -1,0 +1,86 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: Todo lo necesario para el RDS
+Parameters:
+  IPPrivate1:
+    Type: String
+    Description: IP para la subred privada 1
+  IPPrivate2:
+    Type: String
+    Description: IP para la subred privada 2
+Resources:
+  ##############################################################################
+  #                             Sub-Redes Privadas                             #
+  ##############################################################################
+  #Subred privada en EAST 2A
+  PrivateSubnet1:
+    Type: 'AWS::EC2::Subnet'
+    Properties:
+      VpcId: !ImportValue manuelVPC
+      CidrBlock: !Ref IPPrivate1
+      AvailabilityZone: us-east-2a
+      Tags:
+      - Key: Name
+        Value: itzdata-manuel-private1
+  #Subred privada en EAST 2B
+  PrivateSubnet2:
+    Type: 'AWS::EC2::Subnet'
+    Properties:
+      VpcId: !ImportValue manuelVPC
+      CidrBlock: !Ref IPPrivate2
+      AvailabilityZone: us-east-2b
+      Tags:
+      - Key: Name
+        Value: itzdata-manuel-private2
+  ##############################################################################
+  #                       Tabla de ruteo y asociasiones                        #
+  ##############################################################################
+  #Tabla de enrutamiento privada
+  RouteTable:
+    Type: 'AWS::EC2::RouteTable'
+    Properties:
+      VpcId: !ImportValue manuelVPC
+      Tags:
+        - Key: Name
+          Value: itzdata-manuel-PrivateRT
+  #Relacion dela subred privada 1 y la tabla de ruteo
+  SubnetAssociation3:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref RouteTable
+      SubnetId: !Ref PrivateSubnet1
+  #Relacion dela subred privada 2 y la tabla de ruteo
+  SubnetAssociation4:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref RouteTable
+      SubnetId: !Ref PrivateSubnet2
+  ##############################################################################
+  #                               Cosas de la BD                               #
+  ##############################################################################
+  #Agrupacion de subnets para la base de datos
+  DBSubnet:
+    Type: AWS::RDS::DBSubnetGroup
+    Properties:
+      DBSubnetGroupDescription: Grupo de seguridad para la BD
+      SubnetIds:
+        - !Ref PrivateSubnet1
+        - !Ref PrivateSubnet2
+      Tags:
+        - Key: Name
+          Value: itzdata-manuel-DBSubnet
+  #La Base de datos como tal
+  DBMySQL:
+    Type: AWS::RDS::DBInstance
+    Properties:
+      DBName: manuDB
+      AllocatedStorage: "5"
+      DBInstanceClass: db.t2.micro
+      Engine: MySQL
+      MasterUsername: "Manugr21"
+      MasterUserPassword: "12345678"
+      DBSubnetGroupName: !Ref DBSubnet
+      VPCSecurityGroups:
+        - !ImportValue manuelSG
+      Tags:
+        - Key: Name
+          Value: itzdata-manuel-DB

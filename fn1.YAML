@@ -1,0 +1,12 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: Crea la funcion Lambda que crea la tabla e inserta la url y el titulo de la imagen subida a S3
+Resources:
+  Function:
+    Type: 'AWS::Lambda::Function'
+    Properties:
+      Handler: app.handler
+      Role: lambda_becados
+      Code:
+        S3Bucket: itzdata-manu
+        S3Key: app.zip
+      Runtime: python3.6

@@ -1,0 +1,14 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: Contiene la peer conection a otro VPC
+Resources:
+  myVPCPeeringConnection:
+    Type: AWS::EC2::VPCPeeringConnection
+    Properties:
+      VpcId: !ImportValue manuelVPC
+      PeerVpcId: !ImportValue itzdata-giorgio-vpc
+Outputs:
+  StackVPCPeering:
+    Description: The ID of the VPCPeeringConnection
+    Value: !Ref myVPCPeeringConnection
+    Export:
+      Name: manuelVPCPeeringConnection

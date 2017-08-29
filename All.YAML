@@ -1,0 +1,311 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: >-
+  Parte1: VPC, 2 subredes publicas y 2 privadas, InternetGateway, NatGateway, NetworkACL, SecurityGroup, 2 EC2.
+  Parte2: RDS y lambda
+Parameters:
+  IPVPC:
+    Type: String
+    Description: Ip de la VPC
+  IPPublic1:
+    Type: String
+    Description: IP para la subred publica 1
+  IPPublic2:
+    Type: String
+    Description: IP para la subred publica 2
+  IPPrivate1:
+    Type: String
+    Description: IP para la subred privada 1
+  IPPrivate2:
+    Type: String
+    Description: IP para la subred privada 2
+  KeyName:
+    Type: String
+    Description: Nombre del KeyName Pair para entrar a las EC2's
+Resources:
+  ManuelVPC:
+    Type: 'AWS::EC2::VPC'
+    Properties:
+      CidrBlock: !Ref IPVPC
+      Tags:
+      - Key: Name
+        Value: itzdata-manuel-VPC
+  PublicSubnet1:
+    Type: 'AWS::EC2::Subnet'
+    Properties:
+      VpcId: !Ref ManuelVPC
+      CidrBlock: !Ref IPPublic1
+      MapPublicIpOnLaunch: True
+      AvailabilityZone: us-east-2a
+      Tags:
+      - Key: Name
+        Value: itzdata-manuel-public1
+  PublicSubnet2:
+    Type: 'AWS::EC2::Subnet'
+    Properties:
+      VpcId: !Ref ManuelVPC
+      CidrBlock: !Ref IPPublic2
+      MapPublicIpOnLaunch: True
+      AvailabilityZone: us-east-2b
+      Tags:
+      - Key: Name
+        Value: itzdata-manuel-public2
+  RouteTable1:
+    Type: 'AWS::EC2::RouteTable'
+    Properties:
+      VpcId: !Ref ManuelVPC
+      Tags:
+        - Key: Name
+          Value: itzdata-manuel-PublicRT
+  IGW:
+    Type: 'AWS::EC2::InternetGateway'
+    Properties:
+      Tags:
+      - Key: Name
+        Value: IGW
+  IGWattachment:
+    Type: 'AWS::EC2::VPCGatewayAttachment'
+    Properties:
+      InternetGatewayId: !Ref IGW
+      VpcId: !Ref ManuelVPC
+  Route1:
+    Type: 'AWS::EC2::Route'
+    Properties:
+      RouteTableId: !Ref RouteTable1
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref IGW
+  SubnetAssociation1:
+      Type: AWS::EC2::SubnetRouteTableAssociation
+      Properties:
+        RouteTableId: !Ref RouteTable1
+        SubnetId: !Ref PublicSubnet1
+  SubnetAssociation2:
+      Type: AWS::EC2::SubnetRouteTableAssociation
+      Properties:
+        RouteTableId: !Ref RouteTable1
+        SubnetId: !Ref PublicSubnet2
+  PrivateSubnet1:
+    Type: 'AWS::EC2::Subnet'
+    Properties:
+      VpcId: !Ref ManuelVPC
+      CidrBlock: !Ref IPPrivate1
+      AvailabilityZone: us-east-2a
+      Tags:
+      - Key: Name
+        Value: itzdata-manuel-private1
+  PrivateSubnet2:
+    Type: 'AWS::EC2::Subnet'
+    Properties:
+      VpcId: !Ref ManuelVPC
+      CidrBlock: !Ref IPPrivate2
+      AvailabilityZone: us-east-2b
+      Tags:
+      - Key: Name
+        Value: itzdata-manuel-private2
+  RouteTable2:
+    Type: 'AWS::EC2::RouteTable'
+    Properties:
+      VpcId: !Ref ManuelVPC
+      Tags:
+        - Key: Name
+          Value: itzdata-manuel-PrivateRT
+  SubnetAssociation3:
+      Type: AWS::EC2::SubnetRouteTableAssociation
+      Properties:
+        RouteTableId: !Ref RouteTable2
+        SubnetId: !Ref PrivateSubnet1
+  SubnetAssociation4:
+      Type: AWS::EC2::SubnetRouteTableAssociation
+      Properties:
+        RouteTableId: !Ref RouteTable2
+        SubnetId: !Ref PrivateSubnet2
+  NAT1:
+    Type: AWS::EC2::NatGateway
+    Properties:
+      AllocationId:
+        Fn::GetAtt:
+          - EIP1
+          - AllocationId
+      SubnetId: !Ref PrivateSubnet1
+  EIP1:
+    Type: AWS::EC2::EIP
+    Properties:
+      Domain: ManuelVPC
+  NATRoute1:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref RouteTable2
+      DestinationCidrBlock: 0.0.0.0/0
+      NatGatewayId: !Ref NAT1
+  SecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Allow http and ssh to client host
+      VpcId: !Ref ManuelVPC
+      SecurityGroupIngress:
+      - IpProtocol: tcp
+        FromPort: '80'
+        ToPort: '80'
+        CidrIp: 0.0.0.0/0
+      - IpProtocol: tcp
+        FromPort: '22'
+        ToPort: '22'
+        CidrIp: 0.0.0.0/0
+      - IpProtocol: tcp
+        FromPort: '3306'
+        ToPort: '3306'
+        CidrIp: 0.0.0.0/0
+      - IpProtocol: ICMP
+        FromPort: '8'
+        ToPort: "-1"
+        CidrIp: 0.0.0.0/0
+      SecurityGroupEgress:
+      - IpProtocol: tcp
+        FromPort: '80'
+        ToPort: '80'
+        CidrIp: 0.0.0.0/0
+      - IpProtocol: tcp
+        FromPort: '22'
+        ToPort: '22'
+        CidrIp: 0.0.0.0/0
+      - IpProtocol: tcp
+        FromPort: '3306'
+        ToPort: '3306'
+        CidrIp: 0.0.0.0/0
+      - IpProtocol: ICMP
+        FromPort: '8'
+        ToPort: "-1"
+        CidrIp: 0.0.0.0/0
+      Tags:
+      - Key: Name
+        Value: itzdata-manuel-securityGroup
+  EC2Public1:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: https://s3-ap-northeast-1.amazonaws.com/itzdata-manugr/EC2s.YAML
+      Parameters:
+        KeyName: !Ref KeyName
+        NameTag: itzdata-manuel-public1
+        Subnet: !Ref PublicSubnet1
+        SG: !Ref SecurityGroup
+        LaData: !Sub |
+          #!/bin/bash
+          yum update
+          yum install httpd -y
+          echo "Instacia 1" >> /var/www/html/index.html
+          service httpd start
+  EC2Public2:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: https://s3-ap-northeast-1.amazonaws.com/itzdata-manugr/EC2s.YAML
+      Parameters:
+        KeyName: !Ref KeyName
+        NameTag: itzdata-manuel-public2
+        Subnet: !Ref PublicSubnet2
+        SG: !Ref SecurityGroup
+        LaData: !Sub |
+          #!/bin/bash
+          yum update
+          yum install httpd -y
+          echo "Instacia 2" >> /var/www/html/index.html
+          service httpd start
+  NetworkAcl:
+    Type: AWS::EC2::NetworkAcl
+    Properties:
+      VpcId: !Ref ManuelVPC
+      Tags:
+      - Key: Name
+        Value: itzdata-manuel-NACL
+  NetworkAclEntryOut:
+    Type: AWS::EC2::NetworkAclEntry
+    Properties:
+      NetworkAclId: !Ref NetworkAcl
+      RuleNumber: '10'
+      Protocol: -1
+      RuleAction: allow
+      Egress: 'true'
+      CidrBlock: 0.0.0.0/0
+  NetworkAclEntryIn:
+    Type: AWS::EC2::NetworkAclEntry
+    Properties:
+      NetworkAclId: !Ref NetworkAcl
+      RuleNumber: '10'
+      Protocol: "-1"
+      RuleAction: allow
+      Egress: 'false'
+      CidrBlock: 0.0.0.0/0
+  ACLpublic1:
+    Type: AWS::EC2::SubnetNetworkAclAssociation
+    Properties:
+      SubnetId: !Ref PublicSubnet1
+      NetworkAclId: !Ref NetworkAcl
+  ACLpublic2:
+    Type: AWS::EC2::SubnetNetworkAclAssociation
+    Properties:
+      SubnetId: !Ref PublicSubnet2
+      NetworkAclId: !Ref NetworkAcl
+  ACLprivate1:
+    Type: AWS::EC2::SubnetNetworkAclAssociation
+    Properties:
+      SubnetId: !Ref PrivateSubnet1
+      NetworkAclId: !Ref NetworkAcl
+  ACLprivate2:
+    Type: AWS::EC2::SubnetNetworkAclAssociation
+    Properties:
+      SubnetId: !Ref PrivateSubnet2
+      NetworkAclId: !Ref NetworkAcl
+  DBSubnet:
+    Type: AWS::RDS::DBSubnetGroup
+    Properties:
+      DBSubnetGroupDescription: Grupo de seguridad para la BD
+      SubnetIds:
+        - !Ref PrivateSubnet1
+        - !Ref PrivateSubnet2
+      Tags:
+        - Key: Name
+          Value: itzdata-manuel-DBSubnet
+  DBMySQL:
+    Type: AWS::RDS::DBInstance
+    Properties:
+      DBName: manuDB
+      AllocatedStorage: "5"
+      DBInstanceClass: db.t2.micro
+      Engine: MySQL
+      MasterUsername: Manugr21
+      MasterUserPassword: "12345678"
+      DBSubnetGroupName: !Ref DBSubnet
+      VPCSecurityGroups:
+        - !Ref SecurityGroup
+      Tags:
+        - Key: Name
+          Value: itzdata-manuel-DB
+  ELBpublico:
+    Type: 'AWS::ElasticLoadBalancing::LoadBalancer'
+    Properties:
+      CrossZone: True
+      Instances:
+        - !GetAtt EC2Public1.Outputs.InstanceID
+        - !GetAtt EC2Public2.Outputs.InstanceID
+      LoadBalancerName: itzdata-manuel-elb
+      Listeners:
+        - LoadBalancerPort: '80'
+          InstancePort: '80'
+          Protocol: HTTP
+      SecurityGroups:
+        - !Ref SecurityGroup
+      Subnets:
+        - !Ref PublicSubnet1
+        - !Ref PublicSubnet2
+      Tags:
+        - Key: Name
+          Value: itzdata-manuel-ELB
+Outputs:
+  manuelVPCE:
+    Description: ID de la VPC de Manuel
+    Value: !Ref ManuelVPC
+    Export:
+      Name: manuelVPC
+  manuelRTE:
+    Description: ID de la RoutTable Publica
+    Value: !Ref RouteTable1
+    Export:
+      Name: manuelRT
